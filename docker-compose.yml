@@ -1,0 +1,16 @@
+version: "2"
+services:
+  browser-automation-api:
+    build: . # Changed from image to build to use local Dockerfile
+    environment:
+      # Adjust to your screen size
+      - DISPLAY_WIDTH=1600
+      - DISPLAY_HEIGHT=968
+      - RUN_CHROMIUM=yes # Add environment variable for Chromium
+    ports:
+      - "8080:8080"
+      - "3000:3000" # Expose the API port
+    networks:
+      - x11
+networks:
+  x11:

@@ -1,0 +1,12 @@
+{
+  "name": "browser-automation-api",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "start": "bun run src/server.js"
+  },
+  "dependencies": {
+    "playwright": "^1.50.1",
+    "puppeteer": "latest"
+  }
+}
