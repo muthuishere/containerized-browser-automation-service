@@ -6,7 +6,6 @@
     "start": "bun run src/server.js"
   },
   "dependencies": {
-    "playwright": "^1.50.1",
-    "puppeteer": "latest"
+    "playwright": "^1.50.1"
   }
 }

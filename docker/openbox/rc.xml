@@ -1,0 +1,15 @@
+<openbox_config xmlns="http://openbox.org/3.4/rc">
+  <applications>
+<application class="*">
+  <decor>no</decor>
+  <maximized>true</maximized>
+  <fullscreen>yes</fullscreen>
+</application>
+
+<application class="Chromium">
+  <decor>no</decor>
+  <maximized>true</maximized>
+  <fullscreen>yes</fullscreen>
+</application>
+  </applications>
+</openbox_config>

@@ -1,42 +1,23 @@
 # Makefile
 
-.PHONY: build start stop restart logs clean test-google test-github
+.PHONY: build start stop restart logs clean deemwar browser-restart bash
 
 
 GOOGLE_URL="https://www.google.com"
 GITHUB_URL="https://github.com"
+CONTAINER_NAME=browser-automation-api
+
+bash:
+	docker-compose exec $(CONTAINER_NAME) bash
+
 
 # Test Google search
-test-google:
-	@echo "Testing Google search automation..."
+deemwar:
 	curl -X POST -H "Content-Type: application/json" \
-		-d '{"url":"$(GOOGLE_URL)"}' \
-		http://localhost:3000/goto
-	@sleep 2
-	curl -X POST -H "Content-Type: application/json" \
-		-d '{"selector":"input[name=q]","text":"puppeteer automation"}' \
-		http://localhost:3000/type
-	@sleep 1
-	curl -X POST -H "Content-Type: application/json" \
-		-d '{"selector":"input[name=q]"}' \
-		http://localhost:3000/click
-	@echo "Google search test completed"
+		-d '{"url":"https://www.deemwar.com"}' \
+		http://localhost:3000/api/goto
 
-# Test GitHub navigation
-test-github:
-	@echo "Testing GitHub navigation..."
-	curl -X POST -H "Content-Type: application/json" \
-		-d '{"url":"$(GITHUB_URL)"}' \
-		http://localhost:3000/goto
-	@sleep 2
-	curl -X POST -H "Content-Type: application/json" \
-		-d '{"selector":"input[name=q]"}' \
-		http://localhost:3000/click
-	@sleep 1
-	curl -X POST -H "Content-Type: application/json" \
-		-d '{"selector":"input[name=q]","text":"puppeteer"}' \
-		http://localhost:3000/type
-	@echo "GitHub navigation test completed"
+
 
 # Default target
 all: build start
@@ -71,6 +52,14 @@ clean:
 # Show container status
 status:
 	docker-compose ps
+
+browser-restart:
+	@echo "Restarting browser..."
+	curl -X POST -H "Content-Type: application/json" \
+		-d '{}' \
+		http://localhost:3000/browser/restart
+	@echo "\nBrowser restart completed"
+
 
 # Show help
 help:
