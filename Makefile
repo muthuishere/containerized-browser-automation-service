@@ -19,6 +19,36 @@ endif
 	curl -X POST -H "Content-Type: application/json" \
 		-d '{"url":"$(url)"}' \
 		http://localhost:3000/api/goto
+execute-script:
+ifndef script
+	@echo "Error: script parameter is missing. Usage: make execute-script script='document.title'"
+	@exit 1
+endif
+	curl -X POST -H "Content-Type: application/json" \
+	-d '{"script":"$(script)"}' \
+	http://localhost:3000/api/execute
+
+# Start continuous script execution
+# Usage: make execute-continuous script="setInterval(() => window.sendResult({scroll: window.scrollY}), 1000)"
+execute-continuous:
+ifndef script
+	@echo "Error: script parameter is missing. Usage: make execute-continuous script='your_script_here'"
+	@exit 1
+endif
+	curl -X POST -H "Content-Type: application/json" \
+	-d '{"script":"$(script)", "continuous":true}' \
+	http://localhost:3000/api/execute
+
+# Stop a continuous script
+# Usage: make stop-script id=script_123456
+stop-script:
+ifndef id
+	@echo "Error: id parameter is missing. Usage: make stop-script id=script_123456"
+	@exit 1
+endif
+	curl -X POST -H "Content-Type: application/json" \
+	-d '{"scriptId":"$(id)"}' \
+	http://localhost:3000/api/execute/stop
 
 # Test Google search
 deemwar:
@@ -26,7 +56,12 @@ deemwar:
 		-d '{"url":"https://www.deemwar.com"}' \
 		http://localhost:3000/api/goto
 
+# Test Google search
+show-browser:
+	curl -X GET http://localhost:3000/api/browser/show
 
+hide-browser:
+	curl -X GET http://localhost:3000/api/browser/hide
 
 # Default target
 all: build start

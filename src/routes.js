@@ -17,6 +17,32 @@ async function handleGoto(browserManager, body) {
   }
 }
 
+async function handleStopScript(browserManager, body) {
+  const { scriptId } = body;
+  const success = await browserManager.stopScript(scriptId);
+  return new Response(JSON.stringify({ success }));
+}
+
+async function handleShowBrowserWindow(browserManager) {
+  await browserManager.showBrowser();
+  return new Response(
+    JSON.stringify({
+      success: true,
+      message: "Browser window shown successfully",
+    }),
+  );
+}
+
+async function handleHideBrowserWindow(browserManager) {
+  await browserManager.hideBrowser();
+  return new Response(
+    JSON.stringify({
+      success: true,
+      message: "Browser window hidden successfully",
+    }),
+  );
+}
+
 async function handleClick(browserManager, body) {
   await browserManager.click(body.selector);
   return new Response(JSON.stringify({ success: true }));
@@ -65,6 +91,46 @@ async function handleShowBrowser() {
   }
 }
 
+async function handleExecuteScript(browserManager, body) {
+  const continuous = url.searchParams.get("type") === "continuous";
+
+  const { script } = body;
+
+  if (continuous) {
+    try {
+      const { stream, scriptId } =
+        await browserManager.executeContinuousScript(script);
+
+      const response = new Response(stream, {
+        headers: {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          Connection: "keep-alive",
+          "X-Script-ID": scriptId,
+        },
+      });
+
+      // Cleanup when client disconnects
+      response.body.on("close", () => browserManager.stopScript(scriptId));
+
+      return response;
+    } catch (error) {
+      return new Response(JSON.stringify({ error: error.message }), {
+        status: 500,
+      });
+    }
+  } else {
+    try {
+      const result = await browserManager.executeScript(script);
+      return new Response(JSON.stringify({ result }));
+    } catch (error) {
+      return new Response(JSON.stringify({ error: error.message }), {
+        status: 500,
+      });
+    }
+  }
+}
+
 const routeHandlers = {
   "/api/goto": handleGoto,
   "/api/click": handleClick,
@@ -72,11 +138,23 @@ const routeHandlers = {
   "/api/browser/close": handleBrowserClose,
   "/api/browser/restart": handleBrowserRestart,
   "/show-browser": handleShowBrowser, // New endpoint
+  "/api/execute/stop": handleStopScript,
+  "/api/execute": handleExecuteScript,
 };
 export async function setupRoutes(req, browserManager) {
   const url = new URL(req.url);
-  if (req.method === "GET" && url.pathname === "/show-browser") {
-    return handleShowBrowser();
+  // Handle GET requests
+  if (req.method === "GET") {
+    switch (url.pathname) {
+      case "/show-browser":
+        return handleShowBrowser();
+      case "/api/browser/show":
+        return handleShowBrowserWindow(browserManager);
+      case "/api/browser/hide":
+        return handleHideBrowserWindow(browserManager);
+      default:
+        return new Response("Not Found", { status: 404 });
+    }
   }
 
   // Handle POST requests for API endpoints

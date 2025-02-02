@@ -1,8 +1,8 @@
 FROM debian:bullseye
 
-# Install base packages including wget and gnupg
+# Install packages and clean up in a single RUN to reduce layers
 RUN set -ex; \
-    apt-get update; \
+    apt-get update && \
     apt-get install -y \
     bash \
     wget \
@@ -36,14 +36,22 @@ RUN set -ex; \
     libxcomposite1 \
     libxdamage1 \
     libxrandr2 \
-    libgbm1
-
-# Clear font cache and regenerate it
-RUN fc-cache -f -v
+    libgbm1 \
+    && fc-cache -f -v \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* \
+    && rm -rf /var/cache/apt/* \
+    && rm -rf /var/cache/fontconfig/* \
+    && rm -rf /tmp/* \
+    && rm -rf /var/tmp/*
 
 RUN wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb \
+    && apt-get update \
     && apt-get install -y ./google-chrome-stable_current_amd64.deb \
-    && rm google-chrome-stable_current_amd64.deb
+    && rm google-chrome-stable_current_amd64.deb \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* \
+    && rm -rf /var/cache/apt/*
 
 # Install Firefox
 #RUN #apt-get install -y firefox-esr
