@@ -1,10 +1,11 @@
 FROM debian:bullseye
 
-# Install git, supervisor, VNC, & X11 packages
+# Install base packages including wget and gnupg
 RUN set -ex; \
     apt-get update; \
     apt-get install -y \
     bash \
+    wget \
     net-tools \
     novnc \
     supervisor \
@@ -16,7 +17,16 @@ RUN set -ex; \
     websockify \
     openbox \
     dbus-x11 \
-    # Add this Only needed Playwright dependencies
+    # Font packages
+    fonts-liberation \
+    fonts-noto \
+    fonts-noto-cjk \
+    fonts-noto-color-emoji \
+    fonts-noto-mono \
+    fonts-freefont-ttf \
+    fonts-dejavu \
+    fontconfig \
+    # Playwright dependencies
     libnss3 \
     libnspr4 \
     libatk1.0-0 \
@@ -28,9 +38,15 @@ RUN set -ex; \
     libxrandr2 \
     libgbm1
 
+# Clear font cache and regenerate it
+RUN fc-cache -f -v
 
+RUN wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb \
+    && apt-get install -y ./google-chrome-stable_current_amd64.deb \
+    && rm google-chrome-stable_current_amd64.deb
 
-
+# Install Firefox
+#RUN #apt-get install -y firefox-esr
 
 # Install Bun
 RUN curl -fsSL https://bun.sh/install | bash
@@ -45,13 +61,12 @@ ENV HOME=/root \
     DISPLAY=:0 \
     DISPLAY_WIDTH=1024 \
     DISPLAY_HEIGHT=768
-#    DISPLAY=:0.0 \
+
 # Create openbox config directory
 RUN mkdir -p /root/.config/openbox
 
 # Copy openbox configuration
 COPY docker/openbox/rc.xml /root/.config/openbox/
-
 
 # Create and set working directory
 WORKDIR /app

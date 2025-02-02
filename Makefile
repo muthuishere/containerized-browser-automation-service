@@ -1,6 +1,6 @@
 # Makefile
 
-.PHONY: build start stop restart logs clean deemwar browser-restart bash
+.PHONY: build start stop restart logs clean deemwar browser-restart bash goto
 
 
 GOOGLE_URL="https://www.google.com"
@@ -10,6 +10,15 @@ CONTAINER_NAME=browser-automation-api
 bash:
 	docker-compose exec $(CONTAINER_NAME) bash
 
+#make goto url=https://www.example.com
+goto:
+ifndef url
+	@echo "Error: URL parameter is missing. Usage: make goto url=https://example.com"
+	@exit 1
+endif
+	curl -X POST -H "Content-Type: application/json" \
+		-d '{"url":"$(url)"}' \
+		http://localhost:3000/api/goto
 
 # Test Google search
 deemwar:

@@ -1,74 +1,134 @@
 import { mkdir, access } from "fs/promises";
 import { join } from "path";
-import { chromium } from "playwright";
+import { chromium, firefox } from "playwright";
 import { CONFIG } from "../config";
 
 export class BrowserManager {
-  constructor(profileName) {
+  constructor(profileName, browserType = "chromium") {
     this.profileName = profileName;
-    this.profilePath = join(CONFIG.profilesDir, profileName);
+    this.browserType = browserType.toLowerCase();
+    this.profilePath = join(CONFIG.profilesDir, this.browserType, profileName);
     this.browser = null;
     this.currentPage = null;
     this.isInitialized = false;
+    this.browserConfig = this.getBrowserConfig();
+  }
+
+  getBrowserConfig() {
+    const baseConfig = {
+      headless: false,
+      ignoreDefaultArgs: ["--enable-automation"],
+      viewport: null,
+      handleSIGINT: false,
+      handleSIGTERM: false,
+      handleSIGHUP: false,
+    };
+
+    const configs = {
+      chrome: {
+        executablePath: "/usr/bin/google-chrome",
+        args: [
+          "--no-sandbox",
+          "--kiosk",
+          "--use-fake-ui-for-media-stream",
+          "--use-fake-device-for-media-stream",
+          "--enable-audio-service",
+          "--alsa-output-device=default",
+          "--disable-dev-shm-usage",
+          "--disable-features=TranslateUI",
+          "--disable-gpu",
+          "--window-position=0,0",
+          `--window-size=${CONFIG.display.width},${CONFIG.display.height}`,
+        ],
+      },
+      chromium: {
+        executablePath: "/usr/bin/chromium",
+        args: [
+          "--no-sandbox",
+          "--kiosk",
+          "--use-fake-ui-for-media-stream",
+          "--use-fake-device-for-media-stream",
+          "--enable-audio-service",
+          "--alsa-output-device=default",
+          "--disable-dev-shm-usage",
+          "--disable-features=TranslateUI",
+          "--disable-gpu",
+          "--window-position=0,0",
+          `--window-size=${CONFIG.display.width},${CONFIG.display.height}`,
+        ],
+      },
+      firefox: {
+        executablePath: "/usr/bin/firefox",
+        args: [
+          "--kiosk",
+          `--width=${CONFIG.display.width}`,
+          `--height=${CONFIG.display.height}`,
+        ],
+      },
+    };
+
+    if (!configs[this.browserType]) {
+      throw new Error(`Unsupported browser type: ${this.browserType}`);
+    }
+
+    return {
+      ...baseConfig,
+      ...configs[this.browserType],
+    };
+  }
+
+  getBrowserType() {
+    switch (this.browserType) {
+      case "firefox":
+        return firefox;
+      case "chrome":
+      case "chromium":
+        return chromium;
+      default:
+        throw new Error(`Unsupported browser type: ${this.browserType}`);
+    }
   }
 
   async ensureProfileDir() {
     try {
-      // First ensure the base profiles directory exists
-      await mkdir(CONFIG.profilesDir, { recursive: true });
-
-      // Check if profile directory exists
-      try {
-        await access(this.profilePath);
-        console.log(`Profile directory already exists: ${this.profilePath}`);
-      } catch {
-        // Profile directory doesn't exist, create it
-        await mkdir(this.profilePath, { recursive: true });
-        await Bun.spawn(["chmod", "777", this.profilePath]);
-        console.log(`Created new profile directory: ${this.profilePath}`);
-      }
+      // Create browser-specific profile directory
+      await mkdir(this.profilePath, { recursive: true });
+      await Bun.spawn(["chmod", "777", this.profilePath]);
+      console.log(`Profile directory verified/created at: ${this.profilePath}`);
     } catch (error) {
       console.error("Error managing profile directory:", error);
       throw error;
     }
   }
 
-  async ensureDataDir() {
-    try {
-      await mkdir(this.userDataDir, { recursive: true });
-      await Bun.spawn(["chmod", "777", this.userDataDir]);
-      console.log("Chrome data directory created/verified successfully");
-    } catch (error) {
-      console.error("Error creating chrome data directory:", error);
-      throw error;
-    }
-  }
-
   async init() {
     try {
-      await this.cleanupChromeData();
+      await this.cleanupBrowserData();
 
-      // Verify Chromium exists
+      // Verify browser exists
       try {
-        await access(CONFIG.browser.executablePath);
-        console.log(`Found Chromium at ${CONFIG.browser.executablePath}`);
+        await access(this.browserConfig.executablePath);
+        console.log(
+          `Found ${this.browserType} at ${this.browserConfig.executablePath}`,
+        );
       } catch (error) {
-        console.error(`Chromium not found at ${CONFIG.browser.executablePath}`);
+        console.error(
+          `${this.browserType} not found at ${this.browserConfig.executablePath}`,
+        );
         throw new Error(
-          `Chromium not found at ${CONFIG.browser.executablePath}`,
+          `${this.browserType} not found at ${this.browserConfig.executablePath}`,
         );
       }
 
-      // Ensure profile directory exists
       await this.ensureProfileDir();
-      console.log("Launching browser with config:", CONFIG.browser);
+      console.log("Launching browser with config:", this.browserConfig);
 
-      // Launch browser context with profile path
-      this.browser = await chromium.launchPersistentContext(this.profilePath, {
-        ...CONFIG.browser,
-      });
+      const browserType = this.getBrowserType();
+      this.browser = await browserType.launchPersistentContext(
+        this.profilePath,
+        this.browserConfig,
+      );
 
-      // Ensure we have a page
       const pages = this.browser.pages();
       this.currentPage =
         pages.length > 0 ? pages[0] : await this.browser.newPage();
@@ -77,14 +137,12 @@ export class BrowserManager {
         throw new Error("Failed to create or get page");
       }
 
-      // Set default timeouts
       await this.currentPage.setDefaultTimeout(30000);
       await this.currentPage.setDefaultNavigationTimeout(30000);
 
       this.isInitialized = true;
-      console.log("Browser initialized successfully");
+      console.log(`${this.browserType} browser initialized successfully`);
 
-      // Setup event listeners
       this.browser.on("disconnected", () => {
         console.log("Browser disconnected");
         this.isInitialized = false;
@@ -99,6 +157,18 @@ export class BrowserManager {
       this.browser = null;
       this.currentPage = null;
       return false;
+    }
+  }
+
+  async cleanupBrowserData() {
+    try {
+      // Remove browser lock files
+      await Bun.spawn(["rm", "-f", `${this.profilePath}/SingletonLock`]);
+      await Bun.spawn(["rm", "-f", `${this.profilePath}/SingletonCookie`]);
+      await Bun.spawn(["rm", "-rf", `${this.profilePath}/Singleton*`]);
+      console.log("Cleaned up browser lock files");
+    } catch (error) {
+      console.warn("Error cleaning up browser data:", error);
     }
   }
 
@@ -183,17 +253,6 @@ export class BrowserManager {
     process.exit(0);
   }
 
-  async cleanupChromeData() {
-    try {
-      // Remove Chrome lock files from profile directory
-      await Bun.spawn(["rm", "-f", `${this.profilePath}/SingletonLock`]);
-      await Bun.spawn(["rm", "-f", `${this.profilePath}/SingletonCookie`]);
-      await Bun.spawn(["rm", "-rf", `${this.profilePath}/Singleton*`]);
-      console.log("Cleaned up Chrome lock files");
-    } catch (error) {
-      console.warn("Error cleaning up Chrome data:", error);
-    }
-  }
   // Browser control methods
 
   async click(selector) {

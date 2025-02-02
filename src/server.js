@@ -6,8 +6,8 @@ import { BrowserManager } from "./services/browserManager";
 import { setupRoutes } from "./routes";
 import { CONFIG } from "./config";
 
-// Initialize Browser Manager with specific profile
-const browserManager = new BrowserManager("profile1"); // You can make this configurable via env
+const browserType = process.env.BROWSER_TYPE || "chromium";
+const browserManager = new BrowserManager("profile1", browserType);
 
 const server = serve({
   port: CONFIG.serverPort,
