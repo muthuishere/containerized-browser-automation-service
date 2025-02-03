@@ -1,96 +1,220 @@
-### Script Execution Examples
+# Browser Control Service (BCS)
+A containerized browser automation service that provides REST API control over Chrome/Chromium with real-time visual feedback. Built with Bun, Playwright, and Docker.
 
-1. Using make commands:
+
+## Features
+
+### Browser Control
+- **REST API Interface**: Control browser through HTTP endpoints
+- **Visual Monitoring**: Real-time browser view via VNC
+- **Profile Management**: Persistent browser profiles
+- **Window Control**: Show/hide browser window
+- **Screenshot Capture**: High-quality page captures
+
+### Script Execution
+- **One-time Scripts**: Execute single operations
+- **Continuous Scripts**: Run long-living scripts
+- **Event Streaming**: Real-time execution feedback
+- **File Upload**: Support for script file execution
+
+### Visual Features
+- **VNC Integration**: Live browser monitoring
+- **DevTools Access**: Optional debugging interface
+- **Flexible Display**: Configurable resolution
+- **Fullscreen Support**: Proper window management
+
+## Quick Start
+
 ```bash
-# Get page title (one-time execution)
-make execute-script script="document.title"
+# Clone repository
+git clone git@github.com:muthuishere/containerized-browser-automation-service.git
 
-# Get current URL
-make execute-script script="window.location.href"
+# Navigate to directory
+cd containerized-browser-automation-service
 
-# Get element text
-make execute-script script="document.querySelector('.service-card').textContent"
+# Start service
+docker-compose up -d
 
-# Start continuous monitoring (with query parameter)
-make execute-continuous script="setInterval(() => { console.log(`doing`);window.sendResult({scroll: window.scrollY})}, 1000)"
-
-
-make goto url=https://www.github.com
-
-curl -X POST http://localhost:3000/api/execute \
-  -H "Content-Type: text/plain" \
-  --data-raw "console.log('hello world')"
-
-
-curl -X POST "http://localhost:3000/api/execute?type=continuous" \
-  -H "Content-Type: text/plain" \
-  --data-raw "setInterval(() => { console.log('doing'); window.sendResult({scroll: window.scrollY}); }, 1000)"
-
-make goto url=https://www.google.com
-
-curl -X POST "http://localhost:3000/api/execute" \
-  -F "file=@/Users/muthuishere/muthu/gitworkspace/browserhostin/browser-automation-api/samples/onetime.js"
-
-
-
-curl -X POST "http://localhost:3000/api/execute?type=continuous" \
-  -F "file=@/Users/muthuishere/muthu/gitworkspace/browserhostin/browser-automation-api/samples/continuous.js"
-
-
+# Test the service
+curl http://localhost:3000/api/browser/show
 ```
 
+## API Reference
 
+### Browser Control
+```http
+POST /api/goto
+{
+    "url": "https://example.com"
+}
 
-2. Using curl directly:
-```bash
-# One-time script execution
-curl -X POST http://localhost:3000/api/execute \
-  -H "Content-Type: text/plain" \
-  -d 'document.title'
+GET /api/browser/show
+GET /api/browser/hide
+POST /api/click
+POST /api/type
+```
 
-# Continuous script execution
-curl -X POST "http://localhost:3000/api/execute?type=continuous" \
-  -H "Content-Type: text/plain" \
-  -d 'setInterval(() => window.sendResult({time: Date.now()}), 1000)'
+### Script Management
+```http
+# Execute one-time script
+POST /api/execute
+Content-Type: text/plain
+
+document.title
+
+# Execute continuous script
+POST /api/execute?type=continuous
+Content-Type: text/plain
+
+setInterval(() => {
+    window.sendResult({scroll: window.scrollY})
+}, 1000)
 
 # Stop script
-curl -X POST http://localhost:3000/api/execute/stop \
+POST /api/execute/stop
+{
+    "scriptId": "script_123"
+}
+```
+
+### Content Access
+```http
+GET /api/html
+GET /show-vnc-viewer
+```
+
+## Configuration
+
+### Environment Variables
+```env
+PROFILES_DIR=/chrome-profiles
+SERVER_PORT=3000
+DISPLAY_WIDTH=1920
+DISPLAY_HEIGHT=1080
+SHOW_DEVTOOLS=false
+```
+
+### Docker Compose
+```yaml
+services:
+  browser-control:
+    build: .
+    ports:
+      - "3000:3000"  # API
+      - "8080:8080"  # VNC
+    volumes:
+      - ./chrome-profiles:/chrome-profiles
+```
+
+## Integration Examples
+
+### Basic Navigation
+```bash
+# Navigate and capture
+curl -X POST http://localhost:3000/api/goto \
   -H "Content-Type: application/json" \
-  -d '{"scriptId": "script_123456"}'
+  -d '{"url": "https://example.com"}'
+
+curl http://localhost:3000/api/screenshot > page.png
 ```
 
-3. Using JavaScript/fetch:
-```javascript
-// One-time script
-const response = await fetch('http://localhost:3000/api/execute', {
-  method: 'POST',
-  headers: { 'Content-Type': 'text/plain' },
-  body: 'document.title'
-});
-const result = await response.json();
-console.log(result);
-
-// Continuous script with SSE
-const response = await fetch('http://localhost:3000/api/execute?type=continuous', {
-  method: 'POST',
-  headers: { 'Content-Type': 'text/plain' },
-  body: 'setInterval(() => window.sendResult({time: Date.now()}), 1000)'
-});
-
-const scriptId = response.headers.get('X-Script-ID');
-
-// Listen for events
-const events = new EventSource(`http://localhost:3000/api/execute?scriptId=${scriptId}`);
-events.onmessage = (event) => {
-  const data = JSON.parse(event.data);
-  console.log('Received:', data);
-};
-
-// Cleanup when done
-events.close();
-await fetch('http://localhost:3000/api/execute/stop', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ scriptId })
-});
+### Script Execution
+```bash
+# Monitor scroll position
+curl -X POST "http://localhost:3000/api/execute?type=continuous" \
+  -H "Content-Type: text/plain" \
+  --data-raw "setInterval(() => window.sendResult({scroll: window.scrollY}), 1000)"
 ```
+
+### Visual Monitoring
+```bash
+# Access VNC viewer
+open http://localhost:8080/vnc.html
+```
+
+## Development
+
+### Prerequisites
+- Docker & Docker Compose
+- Bun runtime
+- Node.js (optional)
+
+### Project Structure
+```
+src/
+├── services/
+│   ├── browsers/         # Browser implementations
+│   ├── browserManager.js # Browser lifecycle
+│   ├── scriptExecutor.js # Script handling
+│   └── scriptManager.js  # Script management
+├── routes.js            # API endpoints
+├── server.js            # Main server
+└── config.js            # Configuration
+```
+
+### Running Locally
+```bash
+# Install dependencies
+bun install
+
+# Start development
+docker-compose up --build
+
+# View logs
+docker-compose logs -f
+```
+
+## Common Use Cases
+
+1. **Web Testing**
+   - Automated UI testing
+   - Visual regression testing
+   - Cross-browser testing
+
+2. **Web Automation**
+   - Data extraction
+   - Form automation
+   - Site monitoring
+
+3. **Debug & Development**
+   - Visual debugging
+   - Script testing
+   - Browser automation development
+
+
+
+
+
+---
+
+Built with ❤️ by [muthuishere](https://github.com/muthuishere)
+
+For detailed implementation examples and integration patterns, check out our [Wiki](https://github.com/muthuishere/containerized-browser-automation-service/wiki).
+
+
+## License
+
+This project follows a dual-licensing model:
+
+### Non-Commercial Use
+- Free for personal, educational, and non-commercial use
+- Must include original copyright and license notices
+- Source code modifications must be shared under the same terms
+- No warranty provided
+
+### Commercial Use
+- Requires purchasing a commercial license
+- Contact [muthuishere](https://github.com/muthuishere) for licensing options
+- Includes:
+  - Commercial deployment rights
+  - Priority support
+  - Private modifications
+  - Additional features
+  - SLA guarantees
+
+
+Using this software in a commercial setting without a valid commercial license is strictly prohibited. Unauthorized commercial use may result in legal action.
+
+By using this software, you agree to abide by the terms of either the non-commercial or commercial license, depending on your usage context.
+
+[View Full License Terms](https://github.com/muthuishere/browser-automation-api/blob/main/LICENSE)
