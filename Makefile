@@ -65,6 +65,39 @@ show-browser:
 hide-browser:
 	curl -X GET http://localhost:3000/api/browser/hide
 
+
+get-screenshot:
+	@echo "Taking screenshot..."
+	@rm -f screenshot.png
+	curl -X GET \
+		-H "Accept: image/png" \
+		--max-time 60 \
+		--retry 3 \
+		--retry-delay 2 \
+		--retry-max-time 180 \
+		--connect-timeout 10 \
+		--keepalive-time 60 \
+		-v \
+		http://localhost:3000/api/screenshot --output screenshot.png || \
+	(echo "Screenshot failed. Check server logs for details" && exit 1)
+	@if [ -f screenshot.png ]; then \
+		if [ -s screenshot.png ]; then \
+			echo "Screenshot saved successfully as screenshot.png"; \
+			ls -l screenshot.png; \
+		else \
+			echo "Screenshot file is empty"; \
+			rm screenshot.png; \
+			exit 1; \
+		fi \
+	else \
+		echo "Screenshot file was not created"; \
+		exit 1; \
+	fi
+
+get-html:
+	curl -X GET http://localhost:3000/api/html > page.html
+	@echo "HTML content saved as page.html"
+
 # Default target
 all: build start
 

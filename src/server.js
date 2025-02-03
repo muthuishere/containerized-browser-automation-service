@@ -6,7 +6,7 @@ import { BrowserManager } from "./services/browserManager";
 import { setupRoutes } from "./routes";
 import { CONFIG } from "./config";
 
-const browserType = process.env.BROWSER_TYPE || "chromium";
+const browserType = "chromium";
 const initialVisibility = process.env.BROWSER_VISIBLE === "true";
 const browserManager = new BrowserManager(
   "profile1",
@@ -16,6 +16,7 @@ const browserManager = new BrowserManager(
 
 const server = serve({
   port: CONFIG.serverPort,
+  idleTimeout: 255,
   fetch: async (req) => setupRoutes(req, browserManager),
 });
 

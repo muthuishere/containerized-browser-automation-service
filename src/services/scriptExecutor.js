@@ -1,9 +1,38 @@
 import { PassThrough } from "stream";
+import { file } from "bun";
 
 export class ScriptExecutorService {
   constructor(browserInstance, scriptManager) {
     this.browserInstance = browserInstance;
     this.scriptManager = scriptManager;
+    this.overridesCache = null;
+  }
+
+  async loadOverrides() {
+    if (!this.overridesCache) {
+      this.overridesCache = await file(
+        "src/assets/scripts/overrides.js",
+      ).text();
+    }
+    return this.overridesCache;
+  }
+
+  async ensureContext() {
+    try {
+      // Check if the context needs initialization by testing for our globals
+      const needsInit = await this.browserInstance.evaluateInPage(`
+        typeof window.__originalSetInterval === 'undefined'
+      `);
+
+      if (needsInit) {
+        const overridesScript = await this.loadOverrides();
+        await this.browserInstance.evaluateInPage(overridesScript);
+        console.log("Context initialized with overrides");
+      }
+    } catch (error) {
+      console.error("Failed to ensure context:", error);
+      throw error;
+    }
   }
 
   async execute(script) {
@@ -15,6 +44,7 @@ export class ScriptExecutorService {
     const stream = new PassThrough();
 
     try {
+      await this.ensureContext();
       await this.setupScriptExecution(scriptId, script, stream);
       return { stream, scriptId };
     } catch (error) {
@@ -24,51 +54,34 @@ export class ScriptExecutorService {
   }
 
   async setupScriptExecution(scriptId, script, stream) {
-    // Expose result sending function
-    await this.browserInstance.exposeFunction("sendResult", (data) => {
-      stream.write(JSON.stringify({ data, scriptId }));
-    });
+    try {
+      const sendResultFunctionName = `sendResult_${scriptId}`;
 
-    // Setup script with cleanup handlers
-    await this.browserInstance.evaluateInPage(`
-      (async () => {
-        try {
-          // Create cleanup handler
-          window.scriptCleanup_${scriptId} = () => {
-            if (window.scriptInterval_${scriptId}) clearInterval(window.scriptInterval_${scriptId});
-            if (window.scriptObserver_${scriptId}) window.scriptObserver_${scriptId}.disconnect();
-
-            // Cleanup globals
-            delete window.scriptCleanup_${scriptId};
-            delete window.scriptInterval_${scriptId};
-            delete window.scriptObserver_${scriptId};
-          };
-
-          // Modify and execute script
-          const modifiedScript = \`
-            ${this.modifyScript(script, scriptId)}
-          \`;
-          eval(modifiedScript);
-        } catch (error) {
-          window.sendResult({ error: error.message });
-        }
-      })();
-    `);
-
-    // Register script for cleanup
-    this.registerScript(scriptId, stream);
-  }
-
-  modifyScript(script, scriptId) {
-    return script
-      .replace(
-        /setInterval\(/g,
-        `window.scriptInterval_${scriptId} = setInterval(`,
-      )
-      .replace(
-        /new MutationObserver\(/g,
-        `window.scriptObserver_${scriptId} = new MutationObserver(`,
+      await this.browserInstance.exposeFunction(
+        sendResultFunctionName,
+        (data) => {
+          stream.write(JSON.stringify({ data, scriptId }));
+        },
       );
+
+      await this.browserInstance.evaluateInPage(`
+        (async () => {
+          try {
+            window.__currentScriptId = '${scriptId}';
+            window.sendResult = window.${sendResultFunctionName};
+
+            ${script}
+          } catch (error) {
+            window.${sendResultFunctionName}({ error: error.message });
+          }
+        })();
+      `);
+
+      this.registerScript(scriptId, stream);
+    } catch (error) {
+      console.error("Setup script execution error:", error);
+      throw error;
+    }
   }
 
   registerScript(scriptId, stream) {
@@ -84,16 +97,13 @@ export class ScriptExecutorService {
       },
     });
 
-    // Handle stream lifecycle
     stream.on("end", () => this.stopScript(scriptId));
     stream.on("close", () => this.stopScript(scriptId));
   }
 
   async cleanupScript(scriptId) {
     await this.browserInstance.evaluateInPage(`
-      if (window.scriptCleanup_${scriptId}) {
-        window.scriptCleanup_${scriptId}();
-      }
+      window.cleanupScript('${scriptId}');
     `);
   }
 

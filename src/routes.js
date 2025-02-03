@@ -90,11 +90,92 @@ async function handleShowVNCViewer() {
     return new Response("Error loading VNC viewer", { status: 500 });
   }
 }
+
+async function handleGetScreenshot(browserManager) {
+  try {
+    const screenshot = await browserManager.getScreenshot();
+
+    if (!screenshot || screenshot.length === 0) {
+      throw new Error("Screenshot data is empty");
+    }
+
+    // Create a ReadableStream from the screenshot buffer
+    const stream = new ReadableStream({
+      start(controller) {
+        controller.enqueue(screenshot);
+        controller.close();
+      },
+    });
+
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "image/png",
+        "Content-Length": screenshot.length.toString(),
+        "Cache-Control": "no-store, no-cache, must-revalidate",
+        Pragma: "no-cache",
+      },
+    });
+  } catch (error) {
+    console.error("Screenshot handler error:", error);
+    return new Response(
+      JSON.stringify({
+        error: error.message,
+        stack: error.stack,
+      }),
+      {
+        status: 500,
+        headers: {
+          "Content-Type": "application/json",
+        },
+      },
+    );
+  }
+}
+
+async function handleGetHtml(browserManager) {
+  try {
+    const html = await browserManager.getHtml();
+    return new Response(html, {
+      headers: {
+        "Content-Type": "text/html",
+      },
+    });
+  } catch (error) {
+    return new Response(JSON.stringify({ error: error.message }), {
+      status: 500,
+    });
+  }
+}
+
 async function handleExecuteScript(browserManager, req, url) {
+  let script;
+
+  // Check if the request contains a file
+  const contentType = req.headers.get("content-type");
+  if (contentType && contentType.includes("multipart/form-data")) {
+    // Handle file upload
+    const formData = await req.formData();
+    const file = formData.get("file");
+    if (!file) {
+      return new Response(JSON.stringify({ error: "No file provided" }), {
+        status: 400,
+      });
+    }
+    script = await file.text();
+  } else {
+    // Handle direct script text
+    script = await req.text();
+  }
+  return handleExecuteScriptWithContent(browserManager, script, req, url);
+}
+async function handleExecuteScriptWithContent(
+  browserManager,
+  script,
+  req,
+  url,
+) {
   const continuous = url.searchParams.get("type") === "continuous";
 
-  // Get raw script text from request body
-  const script = await req.text();
   console.log("handleExecuteScript: ", script);
   console.log("continuous: ", continuous);
 
@@ -169,28 +250,34 @@ async function handleExecuteScript(browserManager, req, url) {
   }
 }
 
-const routeHandlers = {
-  "/api/goto": handleGoto,
-  "/api/click": handleClick,
-  "/api/type": handleType,
-  "/api/browser/close": handleBrowserClose,
-  "/api/browser/restart": handleBrowserRestart,
-  "/api/execute/stop": handleStopScript,
-};
+async function handleShowDevTools(browserManager) {
+  await browserManager.showDevTools();
+  return new Response(
+    JSON.stringify({
+      success: true,
+      message: "DevTools shown successfully",
+    }),
+  );
+}
+
+async function handleHideDevTools(browserManager) {
+  await browserManager.hideDevTools();
+  return new Response(
+    JSON.stringify({
+      success: true,
+      message: "DevTools hidden successfully",
+    }),
+  );
+}
 export async function setupRoutes(req, browserManager) {
   const url = new URL(req.url);
   // Handle GET requests
   if (req.method === "GET") {
-    switch (url.pathname) {
-      case "/show-vnc-viewer":
-        return handleShowVNCViewer();
-      case "/api/browser/show":
-        return handleShowBrowserWindow(browserManager);
-      case "/api/browser/hide":
-        return handleHideBrowserWindow(browserManager);
-      default:
-        return new Response("Not Found", { status: 404 });
+    const handler = getRouteHandlers[url.pathname];
+    if (handler) {
+      return await handler(browserManager);
     }
+    return new Response("Not Found", { status: 404 });
   }
 
   // Handle POST requests for API endpoints
@@ -202,7 +289,7 @@ export async function setupRoutes(req, browserManager) {
         return await handleExecuteScript(browserManager, req, url);
       }
 
-      const handler = routeHandlers[url.pathname];
+      const handler = postRouteHandlers[url.pathname];
 
       if (!handler) {
         return new Response("Not Found", { status: 404 });
@@ -223,3 +310,22 @@ export async function setupRoutes(req, browserManager) {
     }
   }
 }
+
+const getRouteHandlers = {
+  "/show-vnc-viewer": handleShowVNCViewer,
+  "/api/browser/show": handleShowBrowserWindow,
+  "/api/browser/hide": handleHideBrowserWindow,
+  "/api/devtools/show": handleShowDevTools,
+  "/api/devtools/hide": handleHideDevTools,
+  "/api/screenshot": handleGetScreenshot,
+  "/api/html": handleGetHtml,
+};
+
+const postRouteHandlers = {
+  "/api/goto": handleGoto,
+  "/api/click": handleClick,
+  "/api/type": handleType,
+  "/api/browser/close": handleBrowserClose,
+  "/api/browser/restart": handleBrowserRestart,
+  "/api/execute/stop": handleStopScript,
+};

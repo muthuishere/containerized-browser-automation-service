@@ -5,4 +5,5 @@ export const CONFIG = {
     width: parseInt(process.env.DISPLAY_WIDTH) || 1920,
     height: parseInt(process.env.DISPLAY_HEIGHT) || 1080,
   },
+  showDevTools: process.env.SHOW_DEVTOOLS === "true",
 };

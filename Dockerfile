@@ -3,7 +3,7 @@ FROM debian:bullseye
 # Install packages and clean up in a single RUN to reduce layers
 RUN set -ex; \
     apt-get update && \
-    apt-get install -y \
+    apt-get install -y --no-install-recommends \
     bash \
     wget \
     net-tools \
@@ -11,7 +11,6 @@ RUN set -ex; \
     supervisor \
     x11vnc \
     xvfb \
-    chromium \
     curl \
     unzip \
     websockify \
@@ -45,16 +44,30 @@ RUN set -ex; \
     && rm -rf /tmp/* \
     && rm -rf /var/tmp/*
 
-RUN wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb \
-    && apt-get update \
-    && apt-get install -y ./google-chrome-stable_current_amd64.deb \
-    && rm google-chrome-stable_current_amd64.deb \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/* \
-    && rm -rf /var/cache/apt/*
+# Install Chromium
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends chromium && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* && \
+    rm -rf /var/cache/apt/*
+
+#Install Chrome
+# RUN wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb \
+#     && apt-get update \
+#     && apt-get install -y ./google-chrome-stable_current_amd64.deb \
+#     && rm google-chrome-stable_current_amd64.deb \
+#     && apt-get clean \
+#     && rm -rf /var/lib/apt/lists/* \
+#     && rm -rf /var/cache/apt/*
+
+
 
 # Install Firefox
-#RUN #apt-get install -y firefox-esr
+# RUN apt-get update && \
+#     apt-get install -y --no-install-recommends firefox-esr && \
+#     apt-get clean && \
+#     rm -rf /var/lib/apt/lists/* && \
+#     rm -rf /var/cache/apt/*
 
 # Install Bun
 RUN curl -fsSL https://bun.sh/install | bash

@@ -4,6 +4,7 @@ import { chromium, firefox } from "playwright";
 import { CONFIG } from "../config";
 import { BrowserFactory } from "./browsers/browserFactory";
 import { ScriptManager } from "./scriptManager";
+import { ScriptExecutorService } from "./scriptExecutor";
 import { PassThrough } from "stream";
 
 export class BrowserManager {
@@ -19,7 +20,10 @@ export class BrowserManager {
     this.browserInstance = BrowserFactory.createBrowser(
       browserType,
       this.profilePath,
-      CONFIG,
+      {
+        ...CONFIG,
+        showDevTools: CONFIG.showDevTools,
+      },
     );
     this.isVisible = initialVisibility; // Add visibility tracking
     this.scriptManager = new ScriptManager();
@@ -27,6 +31,50 @@ export class BrowserManager {
       this.browserInstance,
       this.scriptManager,
     );
+  }
+
+  async getScreenshot() {
+    try {
+      await this.ensureBrowserAndPage();
+
+      // Wait for network and page load
+      await this.browserInstance.currentPage.waitForLoadState("networkidle");
+      await this.browserInstance.currentPage.waitForLoadState(
+        "domcontentloaded",
+      );
+
+      // Setup page for screenshot
+      await this.browserInstance.setupPageForScreenshot();
+
+      // Small delay to ensure everything is settled
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
+      // Take screenshot with specific options
+      const screenshot = await this.browserInstance.currentPage.screenshot({
+        fullPage: true,
+        timeout: 20000,
+        type: "png",
+        scale: "device",
+        omitBackground: false,
+        quality: 100,
+        animations: "disabled",
+        caret: "hide",
+      });
+
+      if (!screenshot || screenshot.length === 0) {
+        throw new Error("Screenshot data is empty");
+      }
+
+      return screenshot;
+    } catch (error) {
+      console.error("Screenshot error:", error);
+      throw new Error(`Failed to take screenshot: ${error.message}`);
+    }
+  }
+
+  async getHtml() {
+    await this.ensureBrowserAndPage();
+    return await this.browserInstance.currentPage.content();
   }
 
   async ensureProfileDir() {
@@ -68,16 +116,14 @@ export class BrowserManager {
       await this.browserInstance.currentPage.setDefaultTimeout(30000);
       await this.browserInstance.currentPage.setDefaultNavigationTimeout(30000);
 
-      // Set initial visibility state
-      if (this.isVisible) {
-        await this.showBrowser();
-      } else {
-        await this.hideBrowser();
-      }
+      // Default is always visible
 
       this.isInitialized = true;
       console.log(`${this.browserType} browser initialized successfully`);
 
+      if (this.isVisible == false) {
+        this.browserInstance.hideBrowser().then((a) => console.log(a));
+      }
       this.browserInstance.browser.on("disconnected", () => {
         console.log("Browser disconnected");
         this.isInitialized = false;
@@ -97,9 +143,7 @@ export class BrowserManager {
   async cleanupBrowserData() {
     try {
       // Remove browser lock files
-      await Bun.spawn(["rm", "-f", `${this.profilePath}/SingletonLock`]);
-      await Bun.spawn(["rm", "-f", `${this.profilePath}/SingletonCookie`]);
-      await Bun.spawn(["rm", "-rf", `${this.profilePath}/Singleton*`]);
+      await this.browserInstance.cleanupBrowserData();
       console.log("Cleaned up browser lock files");
     } catch (error) {
       console.warn("Error cleaning up browser data:", error);
@@ -187,8 +231,15 @@ export class BrowserManager {
         timeout: 30000,
       });
 
+      // Wait for page to be fully loaded
+      await this.browserInstance.currentPage.waitForLoadState("load");
+      await this.browserInstance.currentPage.waitForLoadState(
+        "domcontentloaded",
+      );
+      await this.browserInstance.currentPage.waitForLoadState("networkidle");
+
       // Only attempt fullscreen if browser is visible
-      if (this.isVisible) {
+      if (this.isVisible && !this.browserInstance.config.showDevTools) {
         try {
           await this.browserInstance.currentPage.evaluate(() => {
             if (!document.fullscreenElement) {
@@ -238,4 +289,5 @@ export class BrowserManager {
     await this.browserInstance.currentPage.fill(selector, text);
   }
   // Browser control methods
+  //
 }

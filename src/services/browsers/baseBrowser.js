@@ -20,11 +20,21 @@ export class BaseBrowser {
     throw new Error("hideBrowser must be implemented by subclass");
   }
 
+  cleanupBrowserData() {
+    throw new Error("cleanupBrowserData must be implemented by subclass");
+  }
   getBrowserConfig() {
     throw new Error("getBrowserConfig must be implemented by subclass");
   }
 
   getExecutablePath() {
     throw new Error("getExecutablePath must be implemented by subclass");
+  }
+  async showDevTools() {
+    throw new Error("showDevTools must be implemented by subclass");
+  }
+
+  async hideDevTools() {
+    throw new Error("hideDevTools must be implemented by subclass");
   }
 }

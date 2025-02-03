@@ -12,7 +12,31 @@ make execute-script script="window.location.href"
 make execute-script script="document.querySelector('.service-card').textContent"
 
 # Start continuous monitoring (with query parameter)
-make execute-continuous script="setInterval(() => window.sendResult({scroll: window.scrollY}), 1000)"
+make execute-continuous script="setInterval(() => { console.log(`doing`);window.sendResult({scroll: window.scrollY})}, 1000)"
+
+
+make goto url=https://www.github.com
+
+curl -X POST http://localhost:3000/api/execute \
+  -H "Content-Type: text/plain" \
+  --data-raw "console.log('hello world')"
+
+
+curl -X POST "http://localhost:3000/api/execute?type=continuous" \
+  -H "Content-Type: text/plain" \
+  --data-raw "setInterval(() => { console.log('doing'); window.sendResult({scroll: window.scrollY}); }, 1000)"
+
+make goto url=https://www.google.com
+
+curl -X POST "http://localhost:3000/api/execute" \
+  -F "file=@/Users/muthuishere/muthu/gitworkspace/browserhostin/browser-automation-api/samples/onetime.js"
+
+
+
+curl -X POST "http://localhost:3000/api/execute?type=continuous" \
+  -F "file=@/Users/muthuishere/muthu/gitworkspace/browserhostin/browser-automation-api/samples/continuous.js"
+
+
 ```
 
 
