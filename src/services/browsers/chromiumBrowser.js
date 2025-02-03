@@ -61,7 +61,7 @@ export class ChromiumBrowser extends BaseBrowser {
     } catch (error) {
       console.warn("Show browser failed:", error);
       // Fallback method only if devtools are not enabled
-      if (!this.config.showDevTools) {
+      if (!this.config.disableFullScreen) {
         try {
           await this.currentPage.evaluate(() => {
             const win = window.open("", "_self");

@@ -1,4 +1,4 @@
-# Browser Control Service (BCS)
+# Containerized Browser Control Service (BCS)
 A containerized browser automation service that provides REST API control over Chrome/Chromium with real-time visual feedback. Built with Bun, Playwright, and Docker.
 
 
@@ -9,7 +9,7 @@ A containerized browser automation service that provides REST API control over C
 - **Visual Monitoring**: Real-time browser view via VNC
 - **Profile Management**: Persistent browser profiles
 - **Window Control**: Show/hide browser window
-- **Screenshot Capture**: High-quality page captures
+
 
 ### Script Execution
 - **One-time Scripts**: Execute single operations
@@ -115,7 +115,7 @@ curl -X POST http://localhost:3000/api/goto \
   -H "Content-Type: application/json" \
   -d '{"url": "https://example.com"}'
 
-curl http://localhost:3000/api/screenshot > page.png
+
 ```
 
 ### Script Execution
@@ -129,7 +129,7 @@ curl -X POST "http://localhost:3000/api/execute?type=continuous" \
 ### Visual Monitoring
 ```bash
 # Access VNC viewer
-open http://localhost:8080/vnc.html
+open http://localhost:3000/show-vnc-viewer
 ```
 
 ## Development
@@ -137,7 +137,7 @@ open http://localhost:8080/vnc.html
 ### Prerequisites
 - Docker & Docker Compose
 - Bun runtime
-- Node.js (optional)
+
 
 ### Project Structure
 ```
@@ -185,11 +185,6 @@ docker-compose logs -f
 
 
 
----
-
-Built with ❤️ by [muthuishere](https://github.com/muthuishere)
-
-For detailed implementation examples and integration patterns, check out our [Wiki](https://github.com/muthuishere/containerized-browser-automation-service/wiki).
 
 
 ## License
@@ -217,4 +212,7 @@ Using this software in a commercial setting without a valid commercial license i
 
 By using this software, you agree to abide by the terms of either the non-commercial or commercial license, depending on your usage context.
 
-[View Full License Terms](https://github.com/muthuishere/browser-automation-api/blob/main/LICENSE)
+
+---
+
+Built with ❤️ by [muthuishere](https://github.com/muthuishere)
