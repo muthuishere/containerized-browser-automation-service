@@ -37,7 +37,7 @@ export class ChromiumBrowser extends BaseBrowser {
       });
 
       // Only go fullscreen if devtools are not enabled
-      if (!this.config.showDevTools) {
+      if (!this.config.disableFullScreen) {
         await new Promise((resolve) => setTimeout(resolve, 100));
         await client.send("Browser.setWindowBounds", {
           windowId,
@@ -186,7 +186,7 @@ export class ChromiumBrowser extends BaseBrowser {
     ];
 
     // Only add kiosk mode if devtools are not enabled
-    if (!this.config.showDevTools) {
+    if (!this.config.disableFullScreen) {
       baseArgs.push("--kiosk", "--start-maximized");
     }
 

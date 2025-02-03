@@ -22,7 +22,6 @@ export class BrowserManager {
       this.profilePath,
       {
         ...CONFIG,
-        showDevTools: CONFIG.showDevTools,
       },
     );
     this.isVisible = initialVisibility; // Add visibility tracking
@@ -239,7 +238,7 @@ export class BrowserManager {
       await this.browserInstance.currentPage.waitForLoadState("networkidle");
 
       // Only attempt fullscreen if browser is visible
-      if (this.isVisible && !this.browserInstance.config.showDevTools) {
+      if (this.isVisible && !this.browserInstance.config.disableFullScreen) {
         try {
           await this.browserInstance.currentPage.evaluate(() => {
             if (!document.fullscreenElement) {
