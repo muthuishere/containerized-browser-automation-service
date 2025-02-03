@@ -151,18 +151,7 @@ open http://localhost:3000/show-vnc-viewer
 - Bun runtime
 
 
-### Project Structure
-```
-src/
-├── services/
-│   ├── browsers/         # Browser implementations
-│   ├── browserManager.js # Browser lifecycle
-│   ├── scriptExecutor.js # Script handling
-│   └── scriptManager.js  # Script management
-├── routes.js            # API endpoints
-├── server.js            # Main server
-└── config.js            # Configuration
-```
+
 
 ### Running Locally
 ```bash
