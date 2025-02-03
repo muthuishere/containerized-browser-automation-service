@@ -24,8 +24,9 @@ ifndef script
 	@echo "Error: script parameter is missing. Usage: make execute-script script='document.title'"
 	@exit 1
 endif
-	curl -X POST -H "Content-Type: application/json" \
-	-d '{"script":"$(script)"}' \
+	curl -X POST \
+	-H "Content-Type: text/plain" \
+	--data-raw '$(script)' \
 	http://localhost:3000/api/execute
 
 # Start continuous script execution
@@ -35,9 +36,10 @@ ifndef script
 	@echo "Error: script parameter is missing. Usage: make execute-continuous script='your_script_here'"
 	@exit 1
 endif
-	curl -X POST -H "Content-Type: application/json" \
-	-d '{"script":"$(script)", "continuous":true}' \
-	http://localhost:3000/api/execute
+	curl -X POST \
+	-H "Content-Type: text/plain" \
+	--data-raw '$(script)' \
+	"http://localhost:3000/api/execute?type=continuous"
 
 # Stop a continuous script
 # Usage: make stop-script id=script_123456

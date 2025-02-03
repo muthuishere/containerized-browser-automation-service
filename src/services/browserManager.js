@@ -4,6 +4,8 @@ import { chromium, firefox } from "playwright";
 import { CONFIG } from "../config";
 import { BrowserFactory } from "./browsers/browserFactory";
 import { ScriptManager } from "./scriptManager";
+import { PassThrough } from "stream";
+
 export class BrowserManager {
   constructor(profileName, browserType = "chromium") {
     this.profileName = profileName;
@@ -201,49 +203,92 @@ export class BrowserManager {
     await this.ensureBrowserAndPage();
     return await this.browserInstance.evaluateInPage(script);
   }
-
   async executeContinuousScript(script) {
-    await this.ensureBrowserAndPage();
     const scriptId = this.scriptManager.generateScriptId();
-    const self = this; // Add this
+    const stream = new PassThrough();
 
-    const stream = new ReadableStream({
-      async start(controller) {
-        try {
-          await self.browserInstance.exposeFunction("sendResult", (data) => {
-            controller.enqueue({ data, scriptId });
-          });
+    try {
+      await this.ensureBrowserAndPage();
 
-          await this.browserInstance.evaluateInPage(`
-            (async () => {
-              try {
-                ${script}
-              } catch (error) {
-                window.sendResult({ error: error.message });
+      // Expose the sendResult function to the page
+      await this.browserInstance.exposeFunction("sendResult", (data) => {
+        stream.write(
+          JSON.stringify({
+            data,
+            scriptId,
+          }),
+        );
+      });
+
+      // Execute the script with cleanup handler
+      await this.browserInstance.evaluateInPage(`
+        (async () => {
+          try {
+            // Store cleanup function for this script
+            window.scriptCleanup_${scriptId} = () => {
+              // Clear any intervals
+              if (window.scriptInterval_${scriptId}) {
+                clearInterval(window.scriptInterval_${scriptId});
               }
-            })();
-          `);
+              // Disconnect any observers
+              if (window.scriptObserver_${scriptId}) {
+                window.scriptObserver_${scriptId}.disconnect();
+              }
+              // Additional cleanup if needed
+              delete window.scriptCleanup_${scriptId};
+              delete window.scriptInterval_${scriptId};
+              delete window.scriptObserver_${scriptId};
+            };
 
-          const cleanup = async () => {
+            // Modify the script to store references to intervals/observers
+            const modifiedScript = \`
+              ${script
+                .replace(
+                  /setInterval\(/g,
+                  `window.scriptInterval_${scriptId} = setInterval(`,
+                )
+                .replace(
+                  /new MutationObserver\(/g,
+                  `window.scriptObserver_${scriptId} = new MutationObserver(`,
+                )}
+            \`;
+
+            // Execute the modified script
+            eval(modifiedScript);
+          } catch (error) {
+            window.sendResult({ error: error.message });
+          }
+        })();
+      `);
+
+      // Register the script with cleanup
+      this.scriptManager.registerScript(scriptId, {
+        stream,
+        cleanup: async () => {
+          try {
+            // Execute cleanup in browser
             await this.browserInstance.evaluateInPage(`
               if (window.scriptCleanup_${scriptId}) {
-                await window.scriptCleanup_${scriptId}();
+                window.scriptCleanup_${scriptId}();
               }
             `);
-            controller.close();
-          };
+            // Destroy the stream
+            stream.destroy();
+          } catch (error) {
+            console.error("Error during script cleanup:", error);
+          }
+        },
+      });
 
-          this.scriptManager.registerScript(scriptId, { stream, cleanup });
-        } catch (error) {
-          controller.error(error);
-        }
-      },
-      cancel: async () => {
-        await this.scriptManager.stopScript(scriptId);
-      },
-    });
+      // Handle stream end/close
+      stream.on("end", () => this.stopScript(scriptId));
+      stream.on("close", () => this.stopScript(scriptId));
 
-    return { stream, scriptId };
+      return { stream, scriptId };
+    } catch (error) {
+      stream.destroy();
+      throw error;
+    }
   }
 
   async stopScript(scriptId) {

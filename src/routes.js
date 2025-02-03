@@ -77,7 +77,7 @@ async function handleBrowserRestart(browserManager) {
   );
 }
 
-async function handleShowBrowser() {
+async function handleShowVNCViewer() {
   try {
     const vncTemplate = await file("src/templates/vnc-viewer.html").text();
     return new Response(vncTemplate, {
@@ -90,12 +90,91 @@ async function handleShowBrowser() {
     return new Response("Error loading VNC viewer", { status: 500 });
   }
 }
-
-async function handleExecuteScript(browserManager, body) {
+async function handleExecuteScript(browserManager, req, url) {
   const continuous = url.searchParams.get("type") === "continuous";
 
-  const { script } = body;
+  // Get raw script text from request body
+  const script = await req.text();
+  console.log("handleExecuteScript: ", script);
+  console.log("continuous: ", continuous);
 
+  if (continuous) {
+    try {
+      const { stream, scriptId } =
+        await browserManager.executeContinuousScript(script);
+
+      // Create a ReadableStream for SSE
+      const readableStream = new ReadableStream({
+        start(controller) {
+          // Handle incoming data from the script's stream
+          stream.on("data", (data) => {
+            // Convert Buffer to string if needed and parse it
+            const jsonData =
+              typeof data === "string" ? data : data.toString("utf-8");
+            const eventData = `data: ${jsonData}\n\n`;
+            controller.enqueue(new TextEncoder().encode(eventData));
+          });
+
+          // Handle stream end
+          stream.on("end", () => {
+            console.log(
+              `[Stream End] Script ${scriptId} stream ended naturally`,
+            );
+            controller.close();
+            browserManager.stopScript(scriptId);
+          });
+
+          // Handle errors
+          stream.on("error", (error) => {
+            console.log(
+              `[Stream Error] Script ${scriptId} encountered error:`,
+              error,
+            );
+            controller.error(error);
+            browserManager.stopScript(scriptId);
+          });
+        },
+        cancel() {
+          console.log(
+            `[Client Disconnect] Script ${scriptId} - client disconnected`,
+          );
+          // Clean up when the client disconnects
+          browserManager.stopScript(scriptId);
+        },
+      });
+
+      return new Response(readableStream, {
+        headers: {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          Connection: "keep-alive",
+          "X-Script-ID": scriptId,
+        },
+      });
+    } catch (error) {
+      console.error("[Execute Error]", error);
+      return new Response(JSON.stringify({ error: error.message }), {
+        status: 500,
+      });
+    }
+  } else {
+    try {
+      const result = await browserManager.executeScript(script);
+      return new Response(JSON.stringify({ result }));
+    } catch (error) {
+      return new Response(JSON.stringify({ error: error.message }), {
+        status: 500,
+      });
+    }
+  }
+}
+async function handleExecuteScriptOld(browserManager, req, url) {
+  const continuous = url.searchParams.get("type") === "continuous";
+
+  // Get raw script text from request body
+  const script = await req.text();
+  console.log("handleExecuteScript: ", script);
+  console.log("continuous: ", continuous);
   if (continuous) {
     try {
       const { stream, scriptId } =
@@ -137,17 +216,15 @@ const routeHandlers = {
   "/api/type": handleType,
   "/api/browser/close": handleBrowserClose,
   "/api/browser/restart": handleBrowserRestart,
-  "/show-browser": handleShowBrowser, // New endpoint
   "/api/execute/stop": handleStopScript,
-  "/api/execute": handleExecuteScript,
 };
 export async function setupRoutes(req, browserManager) {
   const url = new URL(req.url);
   // Handle GET requests
   if (req.method === "GET") {
     switch (url.pathname) {
-      case "/show-browser":
-        return handleShowBrowser();
+      case "/show-vnc-viewer":
+        return handleShowVNCViewer();
       case "/api/browser/show":
         return handleShowBrowserWindow(browserManager);
       case "/api/browser/hide":
@@ -158,26 +235,32 @@ export async function setupRoutes(req, browserManager) {
   }
 
   // Handle POST requests for API endpoints
-  if (req.method !== "POST") {
-    return new Response("Not Found", { status: 404 });
-  }
-  const handler = routeHandlers[url.pathname];
+  if (req.method === "POST") {
+    try {
+      console.log("URL Pathname: ", url.pathname);
+      if (url.pathname === "/api/execute") {
+        // Special handling for execute endpoint
+        return await handleExecuteScript(browserManager, req, url);
+      }
 
-  if (!handler) {
-    return new Response("Not Found", { status: 404 });
-  }
+      const handler = routeHandlers[url.pathname];
 
-  try {
-    const body = await req.json();
-    return await handler(browserManager, body);
-  } catch (error) {
-    console.error("Route error:", error);
-    return new Response(
-      JSON.stringify({
-        error: error.message,
-        stack: error.stack,
-      }),
-      { status: 500 },
-    );
+      if (!handler) {
+        return new Response("Not Found", { status: 404 });
+      }
+
+      // For other endpoints that expect JSON
+      const body = await req.json();
+      return await handler(browserManager, body);
+    } catch (error) {
+      console.error("Route error:", error);
+      return new Response(
+        JSON.stringify({
+          error: error.message,
+          stack: error.stack,
+        }),
+        { status: 500 },
+      );
+    }
   }
 }
