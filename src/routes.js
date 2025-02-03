@@ -168,47 +168,6 @@ async function handleExecuteScript(browserManager, req, url) {
     }
   }
 }
-async function handleExecuteScriptOld(browserManager, req, url) {
-  const continuous = url.searchParams.get("type") === "continuous";
-
-  // Get raw script text from request body
-  const script = await req.text();
-  console.log("handleExecuteScript: ", script);
-  console.log("continuous: ", continuous);
-  if (continuous) {
-    try {
-      const { stream, scriptId } =
-        await browserManager.executeContinuousScript(script);
-
-      const response = new Response(stream, {
-        headers: {
-          "Content-Type": "text/event-stream",
-          "Cache-Control": "no-cache",
-          Connection: "keep-alive",
-          "X-Script-ID": scriptId,
-        },
-      });
-
-      // Cleanup when client disconnects
-      response.body.on("close", () => browserManager.stopScript(scriptId));
-
-      return response;
-    } catch (error) {
-      return new Response(JSON.stringify({ error: error.message }), {
-        status: 500,
-      });
-    }
-  } else {
-    try {
-      const result = await browserManager.executeScript(script);
-      return new Response(JSON.stringify({ result }));
-    } catch (error) {
-      return new Response(JSON.stringify({ error: error.message }), {
-        status: 500,
-      });
-    }
-  }
-}
 
 const routeHandlers = {
   "/api/goto": handleGoto,

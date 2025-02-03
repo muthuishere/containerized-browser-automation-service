@@ -7,7 +7,12 @@ import { setupRoutes } from "./routes";
 import { CONFIG } from "./config";
 
 const browserType = process.env.BROWSER_TYPE || "chromium";
-const browserManager = new BrowserManager("profile1", browserType);
+const initialVisibility = process.env.BROWSER_VISIBLE === "true";
+const browserManager = new BrowserManager(
+  "profile1",
+  browserType,
+  initialVisibility,
+);
 
 const server = serve({
   port: CONFIG.serverPort,

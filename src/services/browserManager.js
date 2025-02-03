@@ -7,7 +7,11 @@ import { ScriptManager } from "./scriptManager";
 import { PassThrough } from "stream";
 
 export class BrowserManager {
-  constructor(profileName, browserType = "chromium") {
+  constructor(
+    profileName,
+    browserType = "chromium",
+    initialVisibility = false,
+  ) {
     this.profileName = profileName;
     this.browserType = browserType.toLowerCase();
     this.profilePath = join(CONFIG.profilesDir, this.browserType, profileName);
@@ -17,7 +21,12 @@ export class BrowserManager {
       this.profilePath,
       CONFIG,
     );
+    this.isVisible = initialVisibility; // Add visibility tracking
     this.scriptManager = new ScriptManager();
+    this.scriptExecutor = new ScriptExecutorService(
+      this.browserInstance,
+      this.scriptManager,
+    );
   }
 
   async ensureProfileDir() {
@@ -59,6 +68,13 @@ export class BrowserManager {
       await this.browserInstance.currentPage.setDefaultTimeout(30000);
       await this.browserInstance.currentPage.setDefaultNavigationTimeout(30000);
 
+      // Set initial visibility state
+      if (this.isVisible) {
+        await this.showBrowser();
+      } else {
+        await this.hideBrowser();
+      }
+
       this.isInitialized = true;
       console.log(`${this.browserType} browser initialized successfully`);
 
@@ -73,12 +89,11 @@ export class BrowserManager {
     } catch (error) {
       console.error("Browser initialization failed:", error);
       this.isInitialized = false;
-      this.browser = null;
-      this.currentPage = null;
+      this.browserInstance.browser = null;
+      this.browserInstance.currentPage = null;
       return false;
     }
   }
-
   async cleanupBrowserData() {
     try {
       // Remove browser lock files
@@ -94,11 +109,13 @@ export class BrowserManager {
   async showBrowser() {
     await this.ensureBrowserAndPage();
     await this.browserInstance.showBrowser();
+    this.isVisible = true;
   }
 
   async hideBrowser() {
     await this.ensureBrowserAndPage();
     await this.browserInstance.hideBrowser();
+    this.isVisible = false;
   }
 
   async reconnect() {
@@ -144,6 +161,18 @@ export class BrowserManager {
     }
   }
 
+  async cleanup() {
+    console.log("Cleaning up browser resources...");
+    await this.scriptManager.stopAllScripts();
+    if (this.browserInstance.browser) {
+      await this.browserInstance.browser.close();
+      this.browserInstance.browser = null;
+      this.browserInstance.currentPage = null;
+      this.isInitialized = false;
+    }
+    process.exit(0);
+  }
+
   async goto(url) {
     try {
       await this.ensureBrowserAndPage();
@@ -158,32 +187,22 @@ export class BrowserManager {
         timeout: 30000,
       });
 
-      // Try to go fullscreen
-      try {
-        await this.browserInstance.currentPage.evaluate(() => {
-          if (!document.fullscreenElement) {
-            document.documentElement.requestFullscreen();
-          }
-        });
-      } catch (error) {
-        console.warn("Failed to enter fullscreen:", error);
+      // Only attempt fullscreen if browser is visible
+      if (this.isVisible) {
+        try {
+          await this.browserInstance.currentPage.evaluate(() => {
+            if (!document.fullscreenElement) {
+              document.documentElement.requestFullscreen();
+            }
+          });
+        } catch (error) {
+          console.warn("Failed to enter fullscreen:", error);
+        }
       }
     } catch (error) {
       console.error("Error navigating to URL:", error);
       throw error;
     }
-  }
-
-  async cleanup() {
-    console.log("Cleaning up browser resources...");
-    await this.scriptManager.stopAllScripts(); // Add this
-    if (this.browserInstance.browser) {
-      await this.browserInstance.browser.close();
-      this.browserInstance.browser = null;
-      this.browserInstance.currentPage = null;
-      this.isInitialized = false;
-    }
-    process.exit(0);
   }
 
   async click(selector) {
@@ -201,108 +220,22 @@ export class BrowserManager {
 
   async executeScript(script) {
     await this.ensureBrowserAndPage();
-    return await this.browserInstance.evaluateInPage(script);
+    return await this.scriptExecutor.execute(script);
   }
+
   async executeContinuousScript(script) {
-    const scriptId = this.scriptManager.generateScriptId();
-    const stream = new PassThrough();
-
-    try {
-      await this.ensureBrowserAndPage();
-
-      // Expose the sendResult function to the page
-      await this.browserInstance.exposeFunction("sendResult", (data) => {
-        stream.write(
-          JSON.stringify({
-            data,
-            scriptId,
-          }),
-        );
-      });
-
-      // Execute the script with cleanup handler
-      await this.browserInstance.evaluateInPage(`
-        (async () => {
-          try {
-            // Store cleanup function for this script
-            window.scriptCleanup_${scriptId} = () => {
-              // Clear any intervals
-              if (window.scriptInterval_${scriptId}) {
-                clearInterval(window.scriptInterval_${scriptId});
-              }
-              // Disconnect any observers
-              if (window.scriptObserver_${scriptId}) {
-                window.scriptObserver_${scriptId}.disconnect();
-              }
-              // Additional cleanup if needed
-              delete window.scriptCleanup_${scriptId};
-              delete window.scriptInterval_${scriptId};
-              delete window.scriptObserver_${scriptId};
-            };
-
-            // Modify the script to store references to intervals/observers
-            const modifiedScript = \`
-              ${script
-                .replace(
-                  /setInterval\(/g,
-                  `window.scriptInterval_${scriptId} = setInterval(`,
-                )
-                .replace(
-                  /new MutationObserver\(/g,
-                  `window.scriptObserver_${scriptId} = new MutationObserver(`,
-                )}
-            \`;
-
-            // Execute the modified script
-            eval(modifiedScript);
-          } catch (error) {
-            window.sendResult({ error: error.message });
-          }
-        })();
-      `);
-
-      // Register the script with cleanup
-      this.scriptManager.registerScript(scriptId, {
-        stream,
-        cleanup: async () => {
-          try {
-            // Execute cleanup in browser
-            await this.browserInstance.evaluateInPage(`
-              if (window.scriptCleanup_${scriptId}) {
-                window.scriptCleanup_${scriptId}();
-              }
-            `);
-            // Destroy the stream
-            stream.destroy();
-          } catch (error) {
-            console.error("Error during script cleanup:", error);
-          }
-        },
-      });
-
-      // Handle stream end/close
-      stream.on("end", () => this.stopScript(scriptId));
-      stream.on("close", () => this.stopScript(scriptId));
-
-      return { stream, scriptId };
-    } catch (error) {
-      stream.destroy();
-      throw error;
-    }
+    await this.ensureBrowserAndPage();
+    return await this.scriptExecutor.executeContinuous(script);
   }
 
   async stopScript(scriptId) {
-    return await this.scriptManager.stopScript(scriptId);
+    await this.ensureBrowserAndPage();
+    return await this.scriptExecutor.stopScript(scriptId);
   }
 
   async type(selector, text) {
-    try {
-      await this.ensureBrowserAndPage();
-      await this.browserInstance.currentPage.fill(selector, text);
-    } catch (error) {
-      console.error("Error typing text:", error);
-      throw error;
-    }
+    await this.ensureBrowserAndPage();
+    await this.browserInstance.currentPage.fill(selector, text);
   }
   // Browser control methods
 }
